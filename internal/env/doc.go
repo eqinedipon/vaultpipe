@@ -1,11 +1,12 @@
-// Package env provides utilities for injecting Vault secrets into subprocess
-// environments. It merges secret key/value pairs with a base environment
-// (typically os.Environ()), ensuring secrets override any existing values
-// without persisting them to disk or the parent process environment.
+// Package env provides utilities for constructing and manipulating process
+// environments when streaming secrets from Vault.
 //
-// Usage:
+// Key components:
 //
-//	inj := env.NewInjector(secrets)
-//	inj.ApplyToCmd(cmd, os.Environ())
-//	err := cmd.Run()
+//   - Injector   – merges base environment variables with secret key/value pairs.
+//   - Snapshot   – captures an immutable view of an environment for diffing.
+//   - Filter     – allow/deny rules applied to environment variable sets.
+//   - Expander   – resolves ${VAR} references against secrets and the base env.
+//   - SanitizeKey / SanitizeMap – convert arbitrary Vault secret keys into valid
+//     POSIX environment variable names (uppercase, no illegal characters).
 package env
