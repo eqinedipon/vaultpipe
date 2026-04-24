@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/your-org/vaultpipe/internal/audit"
+	"github.com/your-org/vaultpipe/internal/cache"
 	"github.com/your-org/vaultpipe/internal/config"
 	"github.com/your-org/vaultpipe/internal/env"
 	"github.com/your-org/vaultpipe/internal/process"
@@ -13,15 +16,15 @@ import (
 )
 
 var (
-	cfgFile    string
-	cacheTTL   time.Duration
-	sanitize   bool
+	cfgFile  string
+	cacheTTL time.Duration
+	strictEnv bool
 )
 
 func init() {
 	runCmd.Flags().StringVarP(&cfgFile, "config", "c", "", "path to vaultpipe config file")
 	runCmd.Flags().DurationVar(&cacheTTL, "cache-ttl", 5*time.Minute, "secret cache TTL (0 disables cache)")
-	runCmd.Flags().BoolVar(&sanitize, "sanitize-keys", true, "sanitize secret keys to valid POSIX env var names")
+	runCmd.Flags().BoolVar(&strictEnv, "strict", false, "fail if any required env key cannot be resolved")
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -35,28 +38,46 @@ var runCmd = &cobra.Command{
 func runCommand(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
-	client, err := vault.NewClient(vault.ClientConfig{
-		Address: cfg.VaultAddr,
-		Token:   cfg.VaultToken,
-	})
+	logger := audit.NewLogger(os.Stderr)
+
+	vc, err := vault.NewClient(cfg.Vault.Address, cfg.Vault.Token)
 	if err != nil {
-		return fmt.Errorf("creating vault client: %w", err)
+		return fmt.Errorf("vault client: %w", err)
 	}
 
-	secrets, err := client.GetSecrets(cmd.Context(), cfg.Secrets)
+	cachedClient := vault.NewCachedClient(vc, cache.New(cacheTTL))
+
+	secrets := make(map[string]string)
+	for _, s := range cfg.Secrets {
+		fetched, err := cachedClient.GetSecrets(cmd.Context(), s.Path, s.Keys)
+		if err != nil {
+			logger.LogError(s.Path, err)
+			return fmt.Errorf("fetch secrets at %s: %w", s.Path, err)
+		}
+		logger.LogFetch(s.Path, fetched)
+		for k, v := range fetched {
+			secrets[k] = v
+		}
+	}
+
+	var resolveOpts []env.ResolveOption
+	if strictEnv {
+		resolveOpts = append(resolveOpts, env.Strict)
+	}
+
+	required := cfg.RequiredKeys()
+	base := env.OSMap()
+	resolved, err := env.Resolve(required, env.SanitizeMap(secrets), base, resolveOpts...)
 	if err != nil {
-		return fmt.Errorf("fetching secrets: %w", err)
+		return err
 	}
 
-	if sanitize {
-		secrets = env.SanitizeMap(secrets)
-	}
+	injector := env.NewInjector(base, resolved)
+	runner := process.NewRunner(injector)
+	logger.LogExec(args[0], args[1:])
 
-	injector := env.NewInjector(os.Environ(), secrets)
-	runner := process.NewRunner()
-
-	return runner.Run(cmd.Context(), args, injector.Environ())
+	return runner.Run(cmd.Context(), args[0], args[1:]...)
 }

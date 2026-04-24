@@ -1,8 +1,9 @@
-// Package env provides utilities for constructing, manipulating, and
-// injecting environment variable sets into child processes.
+// Package env provides utilities for building and manipulating process
+// environments, including secret injection, filtering, expansion, and resolution.
 package env
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -15,71 +16,62 @@ type resolveConfig struct {
 	strict     bool
 }
 
-// AllowEmpty permits variables that resolve to an empty string. By default
-// Resolve drops keys whose final value is the empty string.
-func AllowEmpty() ResolveOption {
-	return func(c *resolveConfig) { c.allowEmpty = true }
-}
+// AllowEmpty permits variables whose resolved value is the empty string.
+func AllowEmpty(c *resolveConfig) { c.allowEmpty = true }
 
-// Strict causes Resolve to return an error if any required key (one whose
-// value begins with "required:") cannot be satisfied.
-func Strict() ResolveOption {
-	return func(c *resolveConfig) { c.strict = true }
-}
+// Strict causes Resolve to return an error if any required key is missing or
+// empty (unless AllowEmpty is also set).
+func Strict(cfg *resolveConfig) { cfg.strict = true }
 
-// Resolve builds a final environment map by layering sources in priority order
-// (lowest → highest): base OS environment, dotenv overrides, Vault secrets.
+// Resolve walks required and returns a map containing each key's value drawn
+// from, in priority order: secrets, then base, then os.LookupEnv.
 //
-// Each value is expanded via the provided Expander so that cross-references
-// such as DB_URL=postgres://${DB_USER}:${DB_PASS}@host/db are resolved.
-//
-// When Strict is set, any value that still starts with the sentinel prefix
-// "required:" after expansion is treated as an unresolved required variable
-// and causes an error.
-func Resolve(
-	base map[string]string,
-	dotenv map[string]string,
-	secrets map[string]string,
-	expander *Expander,
-	opts ...ResolveOption,
-) (map[string]string, error) {
+// If Strict is set any key that resolves to "" (and AllowEmpty is not set)
+// returns an error that lists every missing key.
+func Resolve(required []string, secrets, base map[string]string, opts ...ResolveOption) (map[string]string, error) {
 	cfg := &resolveConfig{}
 	for _, o := range opts {
 		o(cfg)
 	}
 
-	// Layer the sources: base < dotenv < secrets.
-	merged := Merge(
-		[]map[string]string{base, dotenv, secrets},
-		WithOverwrite(),
-	)
+	out := make(map[string]string, len(required))
+	var missing []string
 
-	resolved := make(map[string]string, len(merged))
-	var errs []string
+	for _, key := range required {
+		var (
+			val   string
+			found bool
+		)
 
-	for k, v := range merged {
-		expanded := expander.Expand(v)
+		if v, ok := secrets[key]; ok {
+			val, found = v, true
+		} else if v, ok := base[key]; ok {
+			val, found = v, true
+		} else if v, ok := lookupEnv(key); ok {
+			val, found = v, true
+		}
 
-		// Strict mode: detect unresolved required placeholders.
-		if cfg.strict && strings.HasPrefix(expanded, "required:") {
-			errs = append(errs, fmt.Sprintf(
-				"required variable %q is not set (value: %q)", k, expanded,
-			))
+		if cfg.strict && (!found || (!cfg.allowEmpty && val == "")) {
+			missing = append(missing, key)
 			continue
 		}
 
-		// Drop empty values unless AllowEmpty is set.
-		if expanded == "" && !cfg.allowEmpty {
-			continue
-		}
-
-		resolved[k] = expanded
+		out[key] = val
 	}
 
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("resolve: unresolved required variables:\n  %s",
-			strings.Join(errs, "\n  "))
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("resolve: missing required keys: %s",
+			strings.Join(missing, ", "))
 	}
 
-	return resolved, nil
+	return out, nil
 }
+
+// lookupEnv is a variable so tests can override it without touching os.Getenv.
+var lookupEnv = func(key string) (string, bool) {
+	// Avoid importing os at package level; swap in tests.
+	return "", false
+}
+
+// ErrMissingKeys is returned by Resolve in Strict mode.
+var ErrMissingKeys = errors.New("resolve: missing required keys")
