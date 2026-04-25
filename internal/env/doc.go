@@ -1,23 +1,21 @@
-// Package env provides utilities for constructing, manipulating, and injecting
-// process environment variables when streaming secrets from Vault.
+// Package env provides a suite of utilities for constructing, transforming,
+// and injecting environment variables into child processes.
 //
-// # Sub-features
+// # Core capabilities
 //
-//   - Injector   – merges a base environment with secret overrides and exposes
-//     the result as a []string suitable for exec.Cmd.Env.
-//   - Snapshot   – captures an environment map at a point in time and can diff
-//     it against a later state to detect leakage or drift.
-//   - Filter     – allow/deny rules for trimming the environment before
-//     passing it to child processes.
-//   - Expand     – shell-style variable expansion that resolves ${VAR}
-//     references against secrets, base env, and os.Environ.
-//   - Sanitize   – normalises arbitrary key strings to valid POSIX env-var
-//     names (uppercase, replace illegal chars).
-//   - DotEnv     – parses .env files and merges them into the environment.
-//   - Prefix     – strips or adds a prefix to all keys in a map, and filters
-//     by prefix.
-//   - Merge      – combines multiple environment maps with configurable
-//     overwrite semantics.
-//   - Resolve    – resolves a required key list from secrets, base env, and
-//     the OS environment, with optional strict mode.
+//   - Injector: merges secret maps over a base environment slice.
+//   - Snapshot / Diff: capture and compare environment state.
+//   - Filter: allow/deny lists for environment key selection.
+//   - Expand: variable interpolation using secret and base values.
+//   - Sanitize: normalise arbitrary keys to valid POSIX variable names.
+//   - DotEnv: parse .env files into string maps.
+//   - Prefix: add or strip key prefixes.
+//   - Merge: combine multiple string maps with configurable overwrite rules.
+//   - Resolve: ordered lookup across secrets, base env, and OS environment.
+//   - Truncate: cap long values to a configurable maximum length.
+//   - Validate: enforce required keys and non-empty value constraints.
+//   - Coerce: convert arbitrary typed values (bool, int, float, …) to strings
+//     suitable for use as environment variable values.
+//
+// All functions are safe for concurrent use unless noted otherwise.
 package env
