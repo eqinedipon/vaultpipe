@@ -1,21 +1,19 @@
-// Package env provides a suite of utilities for constructing, transforming,
-// and injecting environment variables into child processes.
+// Package env provides utilities for constructing, transforming, and injecting
+// environment variables into child processes.
 //
-// # Core capabilities
+// # Core concepts
 //
-//   - Injector: merges secret maps over a base environment slice.
-//   - Snapshot / Diff: capture and compare environment state.
-//   - Filter: allow/deny lists for environment key selection.
-//   - Expand: variable interpolation using secret and base values.
-//   - Sanitize: normalise arbitrary keys to valid POSIX variable names.
-//   - DotEnv: parse .env files into string maps.
-//   - Prefix: add or strip key prefixes.
-//   - Merge: combine multiple string maps with configurable overwrite rules.
-//   - Resolve: ordered lookup across secrets, base env, and OS environment.
-//   - Truncate: cap long values to a configurable maximum length.
-//   - Validate: enforce required keys and non-empty value constraints.
-//   - Coerce: convert arbitrary typed values (bool, int, float, …) to strings
-//     suitable for use as environment variable values.
+// Injector merges secret maps with a base environment and exposes the result as
+// a []string suitable for exec.Cmd.Env.
 //
-// All functions are safe for concurrent use unless noted otherwise.
+// Snapshot captures the current environment so that callers can detect drift
+// after secrets are refreshed.
+//
+// Filter, Merge, Resolve, Expand, Sanitize, Coerce, Truncate, Validate,
+// Prefix, DotEnv, and Watch are composable building blocks that each address a
+// single concern.
+//
+// Transformer applies an ordered chain of TransformFuncs to a secret map,
+// enabling lightweight value transformations (trim, case conversion, etc.)
+// before secrets are injected into the process environment.
 package env
