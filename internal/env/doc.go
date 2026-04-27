@@ -1,26 +1,25 @@
-// Package env provides utilities for constructing, transforming, validating,
-// and injecting environment variable maps into child processes.
+// Package env provides utilities for constructing, transforming, and injecting
+// environment variable maps into child processes.
 //
-// # Core types
+// # Sub-features
 //
-//   - Injector: merges a base environment with secret overrides and exposes
-//     the result as a []string slice compatible with os/exec.
-//   - Snapshot: an immutable point-in-time copy of an environment map that
-//     supports diffing to detect added or changed keys.
-//   - Expander: resolves ${VAR} references inside values against a combined
-//     secrets + base environment lookup.
-//   - Watcher: polls a secret source on a configurable interval and calls an
-//     onChange callback when the snapshot differs from the previous fetch.
-//   - Transformer: applies a chain of per-entry functions (e.g. TrimSpace,
-//     UpperKey) to produce a transformed copy of a map.
-//   - Chain: composes multiple ChainStep functions — including Transformer,
-//     Validate, Sanitize, Truncate, and Coerce passes — into a single
-//     ordered pipeline.
-//
-// # Helpers
-//
-// SanitizeKey / SanitizeMap, CoerceMap, TruncateMap, Merge / MergeTwo,
-// ParseDotEnv / LoadDotEnvFile, Resolve, NewPrefixMapper, and Validate
-// are standalone functions that can be used independently or composed via
-// Chain.
+//   - Injector   – merges secret maps with a base environment and applies them
+//     to exec.Cmd instances.
+//   - Snapshot   – captures an immutable point-in-time view of an env map and
+//     computes diffs between snapshots.
+//   - Filter     – allow-list / deny-list filtering by key prefix or name.
+//   - Expand     – shell-style variable expansion within values.
+//   - Sanitize   – normalises keys to UPPER_SNAKE_CASE.
+//   - DotEnv     – parses .env files into maps.
+//   - Prefix     – strips or prepends key prefixes.
+//   - Merge      – merges multiple maps with configurable overwrite semantics.
+//   - Resolve    – resolves keys against secrets, base env, and OS env.
+//   - Truncate   – caps values at a configurable maximum length.
+//   - Validate   – asserts required keys are present and non-empty.
+//   - Coerce     – converts non-string values (bool, int, float) to strings.
+//   - Watch      – polls for env changes and invokes a callback on diff.
+//   - Transform  – applies user-defined transformation functions to maps.
+//   - Chain      – composes multiple env pipeline steps in order.
+//   - Defaults   – fills missing keys from a set of DefaultSpec entries
+//     without mutating the source map.
 package env
